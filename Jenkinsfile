@@ -13,20 +13,16 @@ pipeline {
             steps {
                 echo "========== Checking and Installing Node.js =========="
                 sh '''
-                    # Check if Node.js is already installed
+                    # Check if Node.js is installed
                     if command -v node &> /dev/null; then
                         echo "✅ Node.js is already installed"
                         node --version
                         npm --version
                     else
                         echo "⚠️ Node.js not found, installing..."
-                        
-                        # Download and install Node.js
                         cd /tmp
                         wget https://nodejs.org/dist/v18.17.0/node-v18.17.0-linux-x64.tar.xz
                         tar -xf node-v18.17.0-linux-x64.tar.xz -C /usr/local
-                        
-                        # Verify installation
                         /usr/local/node-v18.17.0-linux-x64/bin/node --version
                         /usr/local/node-v18.17.0-linux-x64/bin/npm --version
                     fi
@@ -46,28 +42,31 @@ pipeline {
             steps {
                 echo "========== Installing Node dependencies =========="
                 sh '''
+                    export PATH=/usr/local/node-v18.17.0-linux-x64/bin:$PATH
                     echo "Node version: $(node --version)"
                     echo "npm version: $(npm --version)"
                     npm cache clean --force
                     npm install
+                    # Install serve locally for deployment
+                    npm install serve --save-dev
                 '''
             }
         }
 
-      stage('Build') {
-    steps {
-        echo "========== Building React Application =========="
-        sh '''
-            # Update browserslist database to remove warnings
-            export PATH=/usr/local/node-v18.17.0-linux-x64/bin:$PATH
-            npx update-browserslist-db@latest --update
-            # Build React app (ignore warnings temporarily)
-            CI=false npm run build
-            echo "✅ Build completed successfully!"
-            ls -lah build/ | head -20
-        '''
-    }
-}
+        stage('Build') {
+            steps {
+                echo "========== Building React Application =========="
+                sh '''
+                    export PATH=/usr/local/node-v18.17.0-linux-x64/bin:$PATH
+                    # Update browserslist database
+                    npx update-browserslist-db@latest --update
+                    # Build React app
+                    CI=false npm run build
+                    echo "✅ Build completed successfully!"
+                    ls -lah build/ | head -20
+                '''
+            }
+        }
 
         stage('Test Build') {
             steps {
@@ -104,22 +103,14 @@ pipeline {
             }
         }
 
-        stage('Install Serve') {
-            steps {
-                echo "========== Installing serve package =========="
-                sh '''
-                    npm install -g serve
-                '''
-            }
-        }
-
         stage('Deploy & Start Application') {
             steps {
                 echo "========== Deploying and starting application =========="
                 sh '''
+                    export PATH=/usr/local/node-v18.17.0-linux-x64/bin:$PATH
                     cd ${WORKSPACE}/${BUILD_DIR}
                     echo "Starting application on port ${APP_PORT}..."
-                    nohup serve -s . -l ${APP_PORT} > ${WORKSPACE}/app.log 2>&1 &
+                    nohup npx serve -s . -l ${APP_PORT} > ${WORKSPACE}/app.log 2>&1 &
                     APP_PID=$!
                     echo $APP_PID > ${WORKSPACE}/app.pid
                     sleep 3
