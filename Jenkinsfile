@@ -58,6 +58,7 @@ pipeline {
             steps {
                 echo "========== Building React Application =========="
                 sh '''
+                    sh 'npx update-browserslist-db@latest'
                     npm run build
                     echo "Build completed successfully!"
                     ls -lah build/ | head -20
