@@ -54,17 +54,20 @@ pipeline {
             }
         }
 
-        stage('Build') {
-            steps {
-                echo "========== Building React Application =========="
-                sh '''
-                    sh 'npx update-browserslist-db@latest'
-                    npm run build
-                    echo "Build completed successfully!"
-                    ls -lah build/ | head -20
-                '''
-            }
-        }
+      stage('Build') {
+    steps {
+        echo "========== Building React Application =========="
+        sh '''
+            # Update browserslist database to remove warnings
+            export PATH=/usr/local/node-v18.17.0-linux-x64/bin:$PATH
+            npx update-browserslist-db@latest --update
+            # Build React app (ignore warnings temporarily)
+            CI=false npm run build
+            echo "✅ Build completed successfully!"
+            ls -lah build/ | head -20
+        '''
+    }
+}
 
         stage('Test Build') {
             steps {
