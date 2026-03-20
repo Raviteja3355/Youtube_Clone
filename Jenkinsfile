@@ -58,9 +58,9 @@ pipeline {
                 echo "========== Building React Application =========="
                 sh '''
                     export PATH=/usr/local/node-v18.17.0-linux-x64/bin:$PATH
-                    # Update browserslist database
+                    # Update Browserslist database
                     npx update-browserslist-db@latest --update
-                    # Build React app
+                    # Build React app (ignore CI warnings temporarily)
                     CI=false npm run build
                     echo "✅ Build completed successfully!"
                     ls -lah build/ | head -20
@@ -72,9 +72,9 @@ pipeline {
             steps {
                 echo "========== Testing Build Output =========="
                 sh '''
-                    if [ -d "build" ]; then
+                    if [ -d "${BUILD_DIR}" ]; then
                         echo "✅ Build directory exists"
-                        if [ -f "build/index.html" ]; then
+                        if [ -f "${BUILD_DIR}/index.html" ]; then
                             echo "✅ index.html found"
                         else
                             echo "❌ index.html not found"
@@ -92,12 +92,16 @@ pipeline {
             steps {
                 echo "========== Stopping any previous running instance =========="
                 sh '''
-                    if lsof -Pi :${APP_PORT} -sTCP:LISTEN -t >/dev/null 2>&1; then
-                        echo "Stopping application running on port ${APP_PORT}..."
-                        lsof -ti:${APP_PORT} | xargs kill -9 || true
-                        sleep 2
+                    if [ -f "${WORKSPACE}/app.pid" ]; then
+                        PREV_PID=$(cat ${WORKSPACE}/app.pid)
+                        if ps -p $PREV_PID > /dev/null; then
+                            echo "Stopping previous application process $PREV_PID..."
+                            kill -9 $PREV_PID
+                            sleep 2
+                        fi
+                        rm -f ${WORKSPACE}/app.pid
                     else
-                        echo "No process running on port ${APP_PORT}"
+                        echo "No previous PID file found"
                     fi
                 '''
             }
@@ -110,7 +114,8 @@ pipeline {
                     export PATH=/usr/local/node-v18.17.0-linux-x64/bin:$PATH
                     cd ${WORKSPACE}/${BUILD_DIR}
                     echo "Starting application on port ${APP_PORT}..."
-                    nohup npx serve -s . -l ${APP_PORT} > ${WORKSPACE}/app.log 2>&1 &
+                    # Run serve in non-interactive background mode
+                    nohup npx serve -s . -l ${APP_PORT} --no-clipboard > ${WORKSPACE}/app.log 2>&1 &
                     APP_PID=$!
                     echo $APP_PID > ${WORKSPACE}/app.pid
                     sleep 3
@@ -124,8 +129,6 @@ pipeline {
                 echo "========== Performing health check =========="
                 sh '''
                     echo "Waiting for application to be ready..."
-                    sleep 5
-                    
                     for i in {1..30}; do
                         if curl -s http://localhost:${APP_PORT} > /dev/null; then
                             echo "✅ Application is running successfully!"
@@ -135,7 +138,6 @@ pipeline {
                         echo "Attempt $i/30: Waiting for application..."
                         sleep 2
                     done
-                    
                     echo "❌ Application failed to start"
                     cat ${WORKSPACE}/app.log
                     exit 1
@@ -150,11 +152,9 @@ pipeline {
             sh '''
                 echo ""
                 echo "✅ YouTube Clone Application Build & Deploy Successful!"
-                echo "=========================================="
-                echo "Application is running on: http://$(hostname -I | awk '{print $1}'):${APP_PORT}"
+                echo "Application running on: http://$(hostname -I | awk '{print $1}'):${APP_PORT}"
                 echo "Build Directory: ${WORKSPACE}/${BUILD_DIR}"
                 echo "Log File: ${WORKSPACE}/app.log"
-                echo "=========================================="
                 echo ""
             '''
             archiveArtifacts artifacts: 'build/**/*', followSymlinks: false, allowEmptyArchive: false
@@ -171,9 +171,7 @@ pipeline {
 
         always {
             echo "========== CLEANING UP =========="
-            sh '''
-                echo "Workspace: ${WORKSPACE}"
-            '''
+            sh 'echo "Workspace: ${WORKSPACE}"'
         }
     }
 }
