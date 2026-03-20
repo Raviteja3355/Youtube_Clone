@@ -5,9 +5,35 @@ pipeline {
         NODE_ENV = 'production'
         APP_PORT = '3000'
         BUILD_DIR = 'build'
+        PATH = "/usr/local/node-v18.17.0-linux-x64/bin:${PATH}"
     }
 
     stages {
+        stage('Install Node.js') {
+            steps {
+                echo "========== Checking and Installing Node.js =========="
+                sh '''
+                    # Check if Node.js is already installed
+                    if command -v node &> /dev/null; then
+                        echo "✅ Node.js is already installed"
+                        node --version
+                        npm --version
+                    else
+                        echo "⚠️ Node.js not found, installing..."
+                        
+                        # Download and install Node.js
+                        cd /tmp
+                        wget https://nodejs.org/dist/v18.17.0/node-v18.17.0-linux-x64.tar.xz
+                        tar -xf node-v18.17.0-linux-x64.tar.xz -C /usr/local
+                        
+                        # Verify installation
+                        /usr/local/node-v18.17.0-linux-x64/bin/node --version
+                        /usr/local/node-v18.17.0-linux-x64/bin/npm --version
+                    fi
+                '''
+            }
+        }
+
         stage('Checkout') {
             steps {
                 echo "========== Checking out source code =========="
@@ -63,8 +89,7 @@ pipeline {
             steps {
                 echo "========== Stopping any previous running instance =========="
                 sh '''
-                    # Kill any process running on port 3000
-                    if lsof -Pi :${APP_PORT} -sTCP:LISTEN -t >/dev/null; then
+                    if lsof -Pi :${APP_PORT} -sTCP:LISTEN -t >/dev/null 2>&1; then
                         echo "Stopping application running on port ${APP_PORT}..."
                         lsof -ti:${APP_PORT} | xargs kill -9 || true
                         sleep 2
@@ -78,7 +103,9 @@ pipeline {
         stage('Install Serve') {
             steps {
                 echo "========== Installing serve package =========="
-                sh 'npm install -g serve'
+                sh '''
+                    npm install -g serve
+                '''
             }
         }
 
@@ -151,7 +178,6 @@ pipeline {
             echo "========== CLEANING UP =========="
             sh '''
                 echo "Workspace: ${WORKSPACE}"
-                echo "Build status: $BUILD_STATUS"
             '''
         }
     }
